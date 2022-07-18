@@ -196,6 +196,7 @@ function generateGrpcWebImpl(ctx: Context, returnObservable: boolean, hasStreami
       debug?: boolean,
       metadata?: grpc.Metadata,
       upStreamRetryCodes?: number[],
+      upStreamRetryLimitation?: number, 
     }
   `;
 
@@ -308,7 +309,7 @@ function createInvokeMethod(ctx: Context) {
         ? new ${BrowserHeaders}({ ...this.options?.metadata.headersMap, ...metadata?.headersMap })
         : metadata || this.options.metadata;
       return new Observable(observer => {
-        const upStream = (() => {
+        const upStream = ((upstreamRetry: number = 0) => {
           const client = ${grpc}.invoke(methodDesc, {
             host: this.host,
             request,
@@ -319,8 +320,12 @@ function createInvokeMethod(ctx: Context) {
             onEnd: (code: ${grpc}.Code, message: string) => {
               if (code === 0) {
                 observer.complete();
-              } else if (upStreamCodes.includes(code)) {
-                setTimeout(upStream, DEFAULT_TIMEOUT_TIME);
+              } else if (
+                upStreamCodes.includes(code) &&
+                (this.options.upStreamRetryLimitation === undefined ||
+                  upstreamRetry < this.options.upStreamRetryLimitation)
+              ) {
+                setTimeout(upStream, DEFAULT_TIMEOUT_TIME, upstreamRetry + 1);
               } else {
                 observer.error(new Error(\`Error \${code} \${message}\`));
               }
